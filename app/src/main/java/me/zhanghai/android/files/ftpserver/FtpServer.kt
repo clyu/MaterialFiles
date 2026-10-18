@@ -40,7 +40,9 @@ class FtpServer(
                 userManager.save(user)
                 fileSystem = ProviderFileSystemFactory()
                 connectionConfig = ConnectionConfigFactory()
-                    .apply { isAnonymousLoginEnabled = true }
+                    // Anonymous login never checks the password, so only allow it when there's no
+                    // password at all.
+                    .apply { isAnonymousLoginEnabled = this@FtpServer.password == null }
                     .createConnectionConfig()
             }
             .createServer()

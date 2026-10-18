@@ -100,6 +100,14 @@ class FtpServerService : Service() {
             password = null
         } else {
             username = Settings.FTP_SERVER_USERNAME.valueCompat
+            // Logging in as anonymous never checks the password.
+            if (username == USERNAME_ANONYMOUS) {
+                val exception = IllegalArgumentException(
+                    "Username \"$USERNAME_ANONYMOUS\" can only be used with anonymous login"
+                )
+                mainExecutorCompat.execute { onStartError(exception) }
+                return
+            }
             // Never allow logging in without a password.
             password = Settings.FTP_SERVER_PASSWORD.valueCompat.ifEmpty {
                 generatePassword().also { Settings.FTP_SERVER_PASSWORD.putValue(it) }

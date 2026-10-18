@@ -76,3 +76,8 @@ fun String.asFileNameOrNull(): FileName? = if (isValidFileName) FileName(this) e
 
 private val String.isValidFileName: Boolean
     get() = isNotEmpty() && !contains('\u0000') && !contains(PathName.SEPARATOR)
+
+// For a name in a directory listing that may come from a malicious server, which must not resolve
+// to anything other than a child of the directory, e.g. "../x" or "/x".
+val String.isValidDirectoryEntryName: Boolean
+    get() = isValidFileName && this != "." && this != ".."

@@ -22,6 +22,7 @@ import me.zhanghai.android.files.provider.common.DelegateOutputStream
 import me.zhanghai.android.files.provider.common.LocalWatchService
 import me.zhanghai.android.files.provider.common.NotifyEntryModifiedOutputStream
 import me.zhanghai.android.files.provider.common.NotifyEntryModifiedSeekableByteChannel
+import me.zhanghai.android.files.util.isValidDirectoryEntryName
 import org.apache.commons.net.ftp.FTPClient
 import org.apache.commons.net.ftp.FTPClientConfig
 import org.apache.commons.net.ftp.FTPCmd
@@ -237,7 +238,7 @@ object Client {
             val files = client.mlistDirCompat(path.remotePath)
                 ?: client.throwNegativeReplyCodeException()
             return files.mapNotNull { file ->
-                if (file.name == "." || file.name == "..") {
+                if (!file.name.isValidDirectoryEntryName) {
                     return@mapNotNull null
                 }
                 path.resolve(file.name).also { directoryFilesCache[it] = file }

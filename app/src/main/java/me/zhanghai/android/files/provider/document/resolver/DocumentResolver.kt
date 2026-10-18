@@ -29,6 +29,7 @@ import me.zhanghai.android.files.provider.content.resolver.getString
 import me.zhanghai.android.files.provider.content.resolver.moveToFirstOrThrow
 import me.zhanghai.android.files.provider.content.resolver.requireString
 import me.zhanghai.android.files.util.AbstractLocalCursor
+import me.zhanghai.android.files.util.isValidDirectoryEntryName
 import java.io.FileNotFoundException
 import java.io.IOException
 import java.io.InputStream
@@ -412,6 +413,9 @@ object DocumentResolver {
                     val childDisplayName = cursor.requireString(
                         DocumentsContract.Document.COLUMN_DISPLAY_NAME
                     )
+                    if (!childDisplayName.isValidDirectoryEntryName) {
+                        continue
+                    }
                     val childPath = parentPath.resolve(childDisplayName)
                     pathDocumentIdCache[childPath] = childDocumentId
                     directoryCursorCache[childPath] = cursor.toRowCursor()
@@ -552,6 +556,9 @@ object DocumentResolver {
                 val childDisplayName = cursor.requireString(
                     DocumentsContract.Document.COLUMN_DISPLAY_NAME
                 )
+                if (!childDisplayName.isValidDirectoryEntryName) {
+                    continue
+                }
                 val childPath = parentPath.resolve(childDisplayName)
                 pathDocumentIdCache[childPath] = childDocumentId
                 if (childDisplayName == displayName) {

@@ -71,6 +71,7 @@ import me.zhanghai.android.files.provider.common.exists
 import me.zhanghai.android.files.provider.common.getFileStore
 import me.zhanghai.android.files.provider.common.getMode
 import me.zhanghai.android.files.provider.common.getPath
+import me.zhanghai.android.files.provider.common.hasDotOrDotDotName
 import me.zhanghai.android.files.provider.common.isDirectory
 import me.zhanghai.android.files.provider.common.moveTo
 import me.zhanghai.android.files.provider.common.newByteChannel
@@ -183,6 +184,17 @@ private fun FileJob.getTargetFileName(source: Path): Path {
         }
     }
     return source.fileName
+}
+
+// Names in source may come from a malicious server, and a name like "../x" would otherwise make
+// the path in target end up outside of it.
+@Throws(IOException::class)
+private fun Path.relativizeDescendant(descendant: Path): Path {
+    val relativePath = relativize(descendant)
+    if (relativePath.isAbsolute || relativePath.hasDotOrDotDotName) {
+        throw IOException("$descendant is not inside $this")
+    }
+    return relativePath
 }
 
 // The attributes for start path prefers following links, but falls back to not following.
@@ -660,7 +672,8 @@ class ArchiveFileJob(
                 directory: Path,
                 attributes: BasicFileAttributes
             ): FileVisitResult {
-                val directoryInTarget = target.resolveForeign(source.relativize(directory))
+                val directoryInTarget =
+                    target.resolveForeign(source.relativizeDescendant(directory))
                 archive(directory, writer, directoryInTarget, archiveFile, transferInfo)
                 throwIfInterrupted()
                 return FileVisitResult.CONTINUE
@@ -668,7 +681,7 @@ class ArchiveFileJob(
 
             @Throws(IOException::class)
             override fun visitFile(file: Path, attributes: BasicFileAttributes): FileVisitResult {
-                val fileInTarget = target.resolveForeign(source.relativize(file))
+                val fileInTarget = target.resolveForeign(source.relativizeDescendant(file))
                 archive(file, writer, fileInTarget, archiveFile, transferInfo)
                 throwIfInterrupted()
                 return FileVisitResult.CONTINUE
@@ -768,7 +781,8 @@ class CopyFileJob(private val sources: List<Path>, private val targetDirectory: 
                 directory: Path,
                 attributes: BasicFileAttributes
             ): FileVisitResult {
-                val directoryInTarget = target.resolveForeign(source.relativize(directory))
+                val directoryInTarget =
+                    target.resolveForeign(source.relativizeDescendant(directory))
                 val copied = copy(
                     directory, directoryInTarget, isExtract, transferInfo, actionAllInfo
                 )
@@ -778,7 +792,7 @@ class CopyFileJob(private val sources: List<Path>, private val targetDirectory: 
 
             @Throws(IOException::class)
             override fun visitFile(file: Path, attributes: BasicFileAttributes): FileVisitResult {
-                val fileInTarget = target.resolveForeign(source.relativize(file))
+                val fileInTarget = target.resolveForeign(source.relativizeDescendant(file))
                 copy(file, fileInTarget, isExtract, transferInfo, actionAllInfo)
                 throwIfInterrupted()
                 return FileVisitResult.CONTINUE
@@ -1103,7 +1117,8 @@ class MoveFileJob(private val sources: List<Path>, private val targetDirectory: 
                 directory: Path,
                 attributes: BasicFileAttributes
             ): FileVisitResult {
-                val directoryInTarget = target.resolveForeign(source.relativize(directory))
+                val directoryInTarget =
+                    target.resolveForeign(source.relativizeDescendant(directory))
                 try {
                     moveAtomically(directory, directoryInTarget)
                     throwIfInterrupted()
@@ -1120,7 +1135,7 @@ class MoveFileJob(private val sources: List<Path>, private val targetDirectory: 
 
             @Throws(IOException::class)
             override fun visitFile(file: Path, attributes: BasicFileAttributes): FileVisitResult {
-                val fileInTarget = target.resolveForeign(source.relativize(file))
+                val fileInTarget = target.resolveForeign(source.relativizeDescendant(file))
                 try {
                     moveAtomically(file, fileInTarget)
                     throwIfInterrupted()

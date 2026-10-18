@@ -41,6 +41,7 @@ import me.zhanghai.android.files.provider.common.newOutputStream
 import me.zhanghai.android.files.util.closeSafe
 import me.zhanghai.android.files.util.enumSetOf
 import me.zhanghai.android.files.util.hasBits
+import me.zhanghai.android.files.util.isValidDirectoryEntryName
 import java.io.Closeable
 import java.io.IOException
 import java.net.Inet4Address
@@ -107,7 +108,8 @@ object Client {
             val sharePaths = netShareInfos.mapNotNull {
                 if (!(it.type.hasBits(ShareTypes.STYPE_PRINTQ.value)
                         || it.type.hasBits(ShareTypes.STYPE_DEVICE.value)
-                        || it.type.hasBits(ShareTypes.STYPE_IPC.value))) {
+                        || it.type.hasBits(ShareTypes.STYPE_IPC.value))
+                    && it.netName.isValidDirectoryEntryName) {
                     path.resolve(it.netName)
                 } else {
                     null
@@ -130,9 +132,7 @@ object Client {
             }
             val directoryIterator = directory.iterator(FileIdFullDirectoryInformation::class.java)
                 .asSequence()
-                .filter { fileInformation ->
-                    !fileInformation.fileName.let { it == "." || it == ".." }
-                }
+                .filter { fileInformation -> fileInformation.fileName.isValidDirectoryEntryName }
                 .map { fileInformation ->
                     path.resolve(fileInformation.fileName).also {
                         directoryFileInformationCache[it] = fileInformation.toFileInformation()

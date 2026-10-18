@@ -36,6 +36,7 @@ import me.zhanghai.android.files.app.okHttpClient
 import me.zhanghai.android.files.provider.common.LocalWatchService
 import me.zhanghai.android.files.provider.common.NotifyEntryModifiedOutputStream
 import me.zhanghai.android.files.provider.common.NotifyEntryModifiedSeekableByteChannel
+import me.zhanghai.android.files.util.isValidDirectoryEntryName
 import okhttp3.HttpUrl
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
@@ -142,7 +143,12 @@ object Client {
                         if (relation != Response.HrefRelation.MEMBER) {
                             return@propfind
                         }
-                        this += path.resolve(response.hrefName())
+                        // The name is decoded, so "%2F" in it becomes a slash.
+                        val name = response.hrefName()
+                        if (!name.isValidDirectoryEntryName) {
+                            return@propfind
+                        }
+                        this += path.resolve(name)
                             .also {
                                 if (response.isSuccess()) {
                                     collectionMemberCache[it] = response

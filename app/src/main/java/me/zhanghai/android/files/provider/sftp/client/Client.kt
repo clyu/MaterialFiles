@@ -9,6 +9,7 @@ import java8.nio.channels.SeekableByteChannel
 import me.zhanghai.android.files.provider.common.LocalWatchService
 import me.zhanghai.android.files.provider.common.NotifyEntryModifiedSeekableByteChannel
 import me.zhanghai.android.files.util.closeSafe
+import me.zhanghai.android.files.util.isValidDirectoryEntryName
 import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.common.DisconnectReason
 import net.schmizz.sshj.sftp.FileAttributes
@@ -164,7 +165,10 @@ object Client {
         } catch (e: IOException) {
             throw ClientException(e)
         }
-        return files.map { file ->
+        return files.mapNotNull { file ->
+            if (!file.name.isValidDirectoryEntryName) {
+                return@mapNotNull null
+            }
             // The attributes here are from lstat().
             // https://github.com/openssh/openssh-portable/blob/71241fc05db4bbb11bb29340b44b92e2575373d8/sftp-server.c#L1110
             path.resolve(file.name).also { directoryFileAttributesCache[it] = file.attributes }

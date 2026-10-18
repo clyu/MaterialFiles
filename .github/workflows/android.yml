@@ -8,13 +8,13 @@ permissions:
   contents: read
 
 jobs:
+  # Gets no secrets, because the build runs code from Gradle plugins and dependencies.
   build:
 
     runs-on: ubuntu-latest
 
     outputs:
       apk-name: ${{ steps.rename.outputs.apk-name }}
-      signed: ${{ steps.keystore.outputs.signed }}
 
     steps:
     - name: Check out repository
@@ -22,6 +22,13 @@ jobs:
       with:
         submodules: true
         persist-credentials: false
+    # The wrapper JAR is the first thing to run in the build. This is the official one of Gradle 7.0
+    # as listed on https://gradle.org/release-checksums/, so update the checksum here along with
+    # the JAR after checking the new one there.
+    - name: Verify Gradle wrapper JAR
+      run: |
+        echo "e996d452d2645e70c01c11143ca2d3742734a28da2bf61f25c82bdc288c9e637  gradle/wrapper/gradle-wrapper.jar" \
+          | sha256sum --check --strict
     - name: Set up JDK 21
       uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
       with:
@@ -39,65 +46,103 @@ jobs:
         path: app/build/outputs/apk/debug/app-debug.apk
         retention-days: 10
 
-    # A release build is only made when there is a key to sign it with.
-    - name: Decode signing keystore
-      id: keystore
-      env:
-        SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
-      run: |
-        if [ -n "$SIGNING_KEYSTORE_BASE64" ]; then
-          echo "$SIGNING_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/signing.jks"
-          echo "STORE_FILE=$RUNNER_TEMP/signing.jks" >> "$GITHUB_ENV"
-          echo "signed=true" >> "$GITHUB_OUTPUT"
-        else
-          echo "::notice::SIGNING_KEYSTORE_BASE64 is not set; not making a release build."
-        fi
-    # For 64-bit ARM devices only, optimized by R8 as configured for release builds.
-    - name: Build release APK
-      if: steps.keystore.outputs.signed == 'true'
-      env:
-        STORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
-        KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
-        KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD || secrets.SIGNING_KEYSTORE_PASSWORD }}
+    # For 64-bit ARM devices only, optimized by R8 as configured for release builds. There's no
+    # keystore here so the APK is unsigned, and the sign job signs it for master.
+    - name: Build unsigned release APK
       run: ./gradlew --build-cache assembleRelease -PabiFilters=arm64-v8a
     - name: Rename release outputs
       id: rename
-      if: steps.keystore.outputs.signed == 'true'
       run: |
         set -euo pipefail
         metadata=app/build/outputs/apk/release/output-metadata.json
         version="$(jq -r '.elements[0].versionName // empty' "$metadata")"
-        if [ -z "$version" ]; then
-          echo "::error::versionName not found in $metadata"
+        apk_file="$(jq -r '.elements[0].outputFile // empty' "$metadata")"
+        if [ -z "$version" ] || [ -z "$apk_file" ]; then
+          echo "::error::versionName or outputFile not found in $metadata"
           exit 1
         fi
         apk_name="MaterialFiles-$version-arm64-v8a"
-        mv app/build/outputs/apk/release/app-release.apk \
-          "app/build/outputs/apk/release/$apk_name.apk"
+        mv "app/build/outputs/apk/release/$apk_file" \
+          "app/build/outputs/apk/release/$apk_name-unsigned.apk"
         mv app/build/outputs/mapping/release/mapping.txt \
           "app/build/outputs/mapping/release/$apk_name-mapping.txt"
         echo "apk-name=$apk_name" >> "$GITHUB_OUTPUT"
-    - name: Upload release APK
-      if: steps.keystore.outputs.signed == 'true'
+    # Only needed by the sign job.
+    - name: Upload unsigned release APK
+      if: github.ref == 'refs/heads/master'
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
-        name: ${{ steps.rename.outputs.apk-name }}
-        path: app/build/outputs/apk/release/${{ steps.rename.outputs.apk-name }}.apk
+        name: ${{ steps.rename.outputs.apk-name }}-unsigned
+        path: app/build/outputs/apk/release/${{ steps.rename.outputs.apk-name }}-unsigned.apk
         if-no-files-found: error
-    # Needed to retrace obfuscated stack traces from this build.
+        retention-days: 1
+    # Needed to retrace obfuscated stack traces from the signed build.
     - name: Upload R8 mapping
-      if: steps.keystore.outputs.signed == 'true'
+      if: github.ref == 'refs/heads/master'
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: ${{ steps.rename.outputs.apk-name }}-mapping
         path: app/build/outputs/mapping/release/${{ steps.rename.outputs.apk-name }}-mapping.txt
         if-no-files-found: error
 
+  # Signs the release APK without checking out or building anything, so that the signing key is
+  # never exposed to code from the repository or its dependencies. The signing secrets belong to
+  # the release environment, which only allows deploying from master.
+  sign:
+    if: github.ref == 'refs/heads/master'
+    needs: build
+    runs-on: ubuntu-latest
+    environment: release
+
+    permissions: {}
+
+    outputs:
+      signed: ${{ steps.sign.outputs.signed }}
+
+    steps:
+    - name: Download unsigned release APK
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      with:
+        name: ${{ needs.build.outputs.apk-name }}-unsigned
+        path: apk
+    - name: Sign release APK
+      id: sign
+      env:
+        APK_NAME: ${{ needs.build.outputs.apk-name }}
+        SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+        STORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
+        KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+        KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD || secrets.SIGNING_KEYSTORE_PASSWORD }}
+      run: |
+        set -euo pipefail
+        if [ -z "$SIGNING_KEYSTORE_BASE64" ]; then
+          echo "::notice::SIGNING_KEYSTORE_BASE64 is not set; not signing the release build."
+          exit 0
+        fi
+        keystore="$RUNNER_TEMP/signing.jks"
+        echo "$SIGNING_KEYSTORE_BASE64" | base64 --decode > "$keystore"
+        # From the latest build tools preinstalled on the runner.
+        build_tools="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)"
+        "$build_tools/apksigner" sign --ks "$keystore" --ks-pass env:STORE_PASSWORD \
+          --ks-key-alias "$KEY_ALIAS" --key-pass env:KEY_PASSWORD \
+          --out "apk/$APK_NAME.apk" "apk/$APK_NAME-unsigned.apk"
+        rm "$keystore"
+        "$build_tools/zipalign" -c 4 "apk/$APK_NAME.apk"
+        "$build_tools/apksigner" verify --print-certs "apk/$APK_NAME.apk"
+        echo "signed=true" >> "$GITHUB_OUTPUT"
+    - name: Upload release APK
+      if: steps.sign.outputs.signed == 'true'
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: ${{ needs.build.outputs.apk-name }}
+        path: apk/${{ needs.build.outputs.apk-name }}.apk
+        if-no-files-found: error
+
   # Puts the release APK on the Releases page as the "Latest Build" pre-release, which can be
   # downloaded without signing in, unlike workflow artifacts.
   publish-latest:
-    if: github.ref == 'refs/heads/master' && needs.build.outputs.signed == 'true'
-    needs: build
+    if: github.ref == 'refs/heads/master' && needs.sign.outputs.signed == 'true'
+    needs: [build, sign]
     runs-on: ubuntu-latest
 
     # A run checks that no later run has published before publishing its own build, which two

@@ -18,6 +18,7 @@ import me.zhanghai.android.files.settings.Settings
 import me.zhanghai.android.files.util.WakeWifiLock
 import me.zhanghai.android.files.util.showToast
 import me.zhanghai.android.files.util.valueCompat
+import java.security.SecureRandom
 import java.util.concurrent.Executors
 
 class FtpServerService : Service() {
@@ -99,7 +100,10 @@ class FtpServerService : Service() {
             password = null
         } else {
             username = Settings.FTP_SERVER_USERNAME.valueCompat
-            password = Settings.FTP_SERVER_PASSWORD.valueCompat
+            // Never allow logging in without a password.
+            password = Settings.FTP_SERVER_PASSWORD.valueCompat.ifEmpty {
+                generatePassword().also { Settings.FTP_SERVER_PASSWORD.putValue(it) }
+            }
         }
         val port = Settings.FTP_SERVER_PORT.valueCompat
         val homeDirectory = Settings.FTP_SERVER_HOME_DIRECTORY.valueCompat
@@ -128,6 +132,11 @@ class FtpServerService : Service() {
     companion object {
         const val USERNAME_ANONYMOUS = "anonymous"
 
+        private const val GENERATED_PASSWORD_LENGTH = 12
+        // Excludes characters that are easily confused with each other.
+        private const val GENERATED_PASSWORD_CHARACTERS =
+            "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
+
         private val _stateLiveData = MutableLiveData(State.STOPPED)
         val stateLiveData: LiveData<State>
             get() = _stateLiveData
@@ -149,6 +158,13 @@ class FtpServerService : Service() {
                 State.STOPPED -> start(context)
                 else -> throw AssertionError(state)
             }
+        }
+
+        private fun generatePassword(): String {
+            val random = SecureRandom()
+            return (1..GENERATED_PASSWORD_LENGTH).map {
+                GENERATED_PASSWORD_CHARACTERS[random.nextInt(GENERATED_PASSWORD_CHARACTERS.length)]
+            }.joinToString("")
         }
     }
 

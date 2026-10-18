@@ -27,6 +27,7 @@ import me.zhanghai.android.files.filelist.FileListActivity
 import me.zhanghai.android.files.provider.sftp.client.Authority
 import me.zhanghai.android.files.provider.sftp.client.PasswordAuthentication
 import me.zhanghai.android.files.provider.sftp.client.PublicKeyAuthentication
+import me.zhanghai.android.files.provider.sftp.client.TrustOnFirstUseHostKeyVerifier
 import me.zhanghai.android.files.ui.UnfilteredArrayAdapter
 import me.zhanghai.android.files.util.ActionState
 import me.zhanghai.android.files.util.ParcelableArgs
@@ -272,7 +273,10 @@ class EditSftpServerFragment : Fragment() {
     }
 
     private fun remove() {
-        Storages.remove(args.server!!)
+        val server = args.server!!
+        Storages.remove(server)
+        // Allow trusting a new host key when the server is added again.
+        TrustOnFirstUseHostKeyVerifier.removeHostKey(server.authority.host, server.authority.port)
         finish()
     }
 

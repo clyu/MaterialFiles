@@ -10,6 +10,7 @@ import me.zhanghai.android.files.provider.common.LocalWatchService
 import me.zhanghai.android.files.provider.common.NotifyEntryModifiedSeekableByteChannel
 import me.zhanghai.android.files.util.closeSafe
 import net.schmizz.sshj.SSHClient
+import net.schmizz.sshj.common.DisconnectReason
 import net.schmizz.sshj.sftp.FileAttributes
 import net.schmizz.sshj.sftp.FileMode
 import net.schmizz.sshj.sftp.OpenMode
@@ -18,7 +19,6 @@ import net.schmizz.sshj.sftp.Response
 import net.schmizz.sshj.sftp.SFTPClient
 import net.schmizz.sshj.sftp.SFTPException
 import net.schmizz.sshj.transport.TransportException
-import net.schmizz.sshj.transport.verification.PromiscuousVerifier
 import net.schmizz.sshj.userauth.UserAuthException
 import java.io.IOException
 import java.util.Collections
@@ -237,11 +237,21 @@ object Client {
             }
             val authentication = authenticator.getAuthentication(authority)
                 ?: throw ClientException("No authentication found for $authority")
-            val sshClient = SSHClient().apply { addHostKeyVerifier(PromiscuousVerifier()) }
+            val sshClient =
+                SSHClient().apply { addHostKeyVerifier(TrustOnFirstUseHostKeyVerifier) }
             try {
                 sshClient.connect(authority.host, authority.port)
             } catch (e: IOException) {
                 sshClient.closeSafe()
+                val isHostKeyNotVerifiable = e is TransportException &&
+                    e.disconnectReason == DisconnectReason.HOST_KEY_NOT_VERIFIABLE
+                if (isHostKeyNotVerifiable) {
+                    throw ClientException(
+                        "Host key of ${authority.host}:${authority.port} doesn't match the one" +
+                            " trusted on first use, remove and add the server again if the host" +
+                            " key has been changed", e
+                    )
+                }
                 throw ClientException(e)
             }
             try {

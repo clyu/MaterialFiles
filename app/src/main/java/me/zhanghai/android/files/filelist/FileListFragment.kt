@@ -49,6 +49,8 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.leinardi.android.speeddial.SpeedDialView
+import java.io.File
+import java.io.IOException
 import java8.nio.file.Path
 import java8.nio.file.Paths
 import kotlin.math.roundToInt
@@ -331,6 +333,10 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
                             path = path.createArchiveRootPath()
                         }
                     }
+            }
+            if (pickOptions != null && isPickingForOtherApp
+                && path?.isInAppPrivateDirectory == true) {
+                path = null
             }
             if (path == null) {
                 path = Settings.FILE_LIST_DEFAULT_DIRECTORY.valueCompat
@@ -813,6 +819,11 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
     }
 
     private fun pickPaths(paths: LinkedHashSet<Path>) {
+        // Other apps shouldn't get access to our private files by having the user pick them.
+        if (isPickingForOtherApp && paths.any { it.isInAppPrivateDirectory }) {
+            showToast(R.string.file_list_pick_app_private_file_error)
+            return
+        }
         val intent = Intent().apply {
             val pickOptions = viewModel.pickOptions!!
             if (paths.size == 1) {
@@ -841,6 +852,34 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
             finish()
         }
     }
+
+    // Our own pickers are always started for result by ourselves.
+    private val isPickingForOtherApp: Boolean
+        get() = requireActivity().callingPackage != requireContext().packageName
+
+    private val Path.isInAppPrivateDirectory: Boolean
+        get() {
+            if (!isLinuxPath) {
+                return false
+            }
+            val context = requireContext()
+            val privateDirectories = buildList<String> {
+                add(context.applicationInfo.dataDir)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    add(context.applicationInfo.deviceProtectedDataDir)
+                }
+                // Android/data/<package> on each storage volume.
+                context.getExternalFilesDirs(null).mapNotNullTo(this) { it?.parent }
+            }
+            // Resolve ".." and symbolic links like /data/data before checking.
+            return try {
+                val file = toFile().canonicalFile
+                privateDirectories.any { file.startsWith(File(it).canonicalFile) }
+            } catch (e: IOException) {
+                e.printStackTrace()
+                true
+            }
+        }
 
     private fun onSelectedFilesChanged(files: FileItemSet) {
         updateOverlayToolbar()

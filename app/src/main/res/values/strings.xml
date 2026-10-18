@@ -313,6 +313,7 @@
     <string name="file_list_create_file_name_error_empty" translatable="false">@string/file_name_error_empty</string>
     <string name="file_list_create_file_name_error_invalid" translatable="false">@string/file_name_error_invalid</string>
     <string name="file_list_open_current_directory_format">Select “%1$s”</string>
+    <string name="file_list_pick_app_private_file_error">Files private to this app can’t be selected for other apps</string>
     <string name="file_list_paste_move_title_format">Moving %1$,d</string>
     <string name="file_list_paste_copy_title_format">Copying %1$,d</string>
     <string name="file_list_paste_extract_title_format">Extracting %1$,d</string>

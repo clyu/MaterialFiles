@@ -12,7 +12,10 @@ import java8.nio.file.Path
 import java8.nio.file.Paths
 import me.zhanghai.android.files.BuildConfig
 import me.zhanghai.android.files.compat.DocumentsContractCompat
+import me.zhanghai.android.files.provider.linux.isLinuxPath
+import me.zhanghai.android.files.provider.root.RootablePath
 import me.zhanghai.android.files.storage.createOrLog
+import java.io.IOException
 import java.io.Serializable
 import java.net.URI
 
@@ -37,6 +40,8 @@ var Intent.extraPath: Path?
         putExtra(EXTRA_PATH_URI, value?.toUri()?.toString())
     }
 
+// SaveAsActivity is exported, so don't let other apps have us read what they may not be able to,
+// e.g. our private files, files requiring root, or anything through our own content providers.
 val Intent.saveAsPath: Path?
     get() {
         val uri =
@@ -44,8 +49,24 @@ val Intent.saveAsPath: Path?
                 Intent.ACTION_VIEW -> data
                 Intent.ACTION_SEND -> getParcelableExtraSafe(Intent.EXTRA_STREAM) as? Uri
                 else -> null
+            } ?: return null
+        // All our content provider authorities start with our application ID.
+        if (uri.scheme == ContentResolver.SCHEME_CONTENT
+            && uri.host?.startsWith("${BuildConfig.APPLICATION_ID}.") == true) {
+            return null
+        }
+        val path = uri.toPathOrNull() ?: return null
+        if (path.isLinuxPath) {
+            // Resolve ".." and symbolic links like /sdcard before checking.
+            val canonicalPath = try {
+                Paths.get(path.toFile().canonicalPath)
+            } catch (e: IOException) {
+                e.printStackTrace()
+                return null
             }
-        return uri?.toPathOrNull()
+            return canonicalPath.takeUnless { (it as RootablePath).isRootRequired(false) }
+        }
+        return path
     }
 
 private fun Uri.toPathOrNull(): Path? =

@@ -5,6 +5,7 @@
 
 package me.zhanghai.android.files.settings
 
+import android.content.Context
 import android.content.SharedPreferences
 import android.os.Parcel
 import androidx.annotation.AnyRes
@@ -17,7 +18,9 @@ import androidx.core.content.edit
 import androidx.core.content.res.ResourcesCompat
 import me.zhanghai.android.files.app.appClassLoader
 import me.zhanghai.android.files.app.application
+import me.zhanghai.android.files.app.defaultSharedPreferences
 import me.zhanghai.android.files.util.Base64
+import me.zhanghai.android.files.util.KeyStoreHelper
 import me.zhanghai.android.files.util.asBase64
 import me.zhanghai.android.files.util.getBoolean
 import me.zhanghai.android.files.util.getFloat
@@ -320,4 +323,119 @@ class ParcelValueSettingLiveData<T>(
         }
         return bytes.toBase64()
     }
+}
+
+// Excluded from backup, see backup_rules.xml and data_extraction_rules.xml.
+private const val ENCRYPTED_SHARED_PREFERENCES_NAME = "encrypted_settings"
+
+private const val ENCRYPTION_KEY_ALIAS = "settings"
+
+private val encryptedSharedPreferences: SharedPreferences by lazy {
+    application.getSharedPreferences(ENCRYPTED_SHARED_PREFERENCES_NAME, Context.MODE_PRIVATE)
+}
+
+class EncryptedStringSettingLiveData(
+    @StringRes keyRes: Int,
+    @StringRes defaultValueRes: Int
+) : SettingLiveData<String>(null, keyRes, null, defaultValueRes, encryptedSharedPreferences) {
+    private val key = application.getString(keyRes)
+
+    init {
+        init()
+    }
+
+    override fun getDefaultValue(@StringRes defaultValueRes: Int): String =
+        application.getString(defaultValueRes)
+
+    override fun getValue(
+        sharedPreferences: SharedPreferences,
+        key: String,
+        defaultValue: String
+    ): String = sharedPreferences.getDecryptedBytes(key)?.decodeToString() ?: defaultValue
+
+    override fun putValue(sharedPreferences: SharedPreferences, key: String, value: String) {
+        sharedPreferences.putEncryptedBytes(key, value.encodeToByteArray())
+    }
+
+    fun migrateFromDefaultSharedPreferences() {
+        migrateToEncryptedSharedPreferences(key) { it.encodeToByteArray() }
+    }
+}
+
+class EncryptedParcelValueSettingLiveData<T>(
+    @StringRes keyRes: Int,
+    private val defaultValue: T
+) : SettingLiveData<T>(null, keyRes, null, 0, encryptedSharedPreferences) {
+    private val key = application.getString(keyRes)
+
+    init {
+        init()
+    }
+
+    override fun getDefaultValue(@AnyRes defaultValueRes: Int): T = defaultValue
+
+    override fun getValue(
+        sharedPreferences: SharedPreferences,
+        key: String,
+        defaultValue: T
+    ): T =
+        try {
+            sharedPreferences.getDecryptedBytes(key)?.toParcelValue()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        } ?: defaultValue
+
+    override fun putValue(sharedPreferences: SharedPreferences, key: String, value: T) {
+        sharedPreferences.putEncryptedBytes(key, value?.toParcelBytes())
+    }
+
+    fun migrateFromDefaultSharedPreferences() {
+        migrateToEncryptedSharedPreferences(key) { it.asBase64().toByteArray() }
+    }
+
+    private fun ByteArray.toParcelValue(): T =
+        Parcel.obtain().use { parcel ->
+            parcel.unmarshall(this, 0, size)
+            parcel.setDataPosition(0)
+            @Suppress("UNCHECKED_CAST")
+            parcel.readValue(appClassLoader) as T
+        }
+
+    private fun T.toParcelBytes(): ByteArray =
+        Parcel.obtain().use { parcel ->
+            parcel.writeValue(this)
+            parcel.marshall()
+        }
+}
+
+private fun SharedPreferences.getDecryptedBytes(key: String): ByteArray? {
+    val value = getString(key, null) ?: return null
+    return try {
+        KeyStoreHelper.decrypt(ENCRYPTION_KEY_ALIAS, value.asBase64().toByteArray())
+    } catch (e: Exception) {
+        e.printStackTrace()
+        null
+    }
+}
+
+private fun SharedPreferences.putEncryptedBytes(key: String, bytes: ByteArray?) {
+    val value = bytes?.let { KeyStoreHelper.encrypt(ENCRYPTION_KEY_ALIAS, it).toBase64().value }
+    edit { putString(key, value) }
+}
+
+// Values used to be stored as plaintext in the default shared preferences, and any upgrade code
+// for them in AppUpgraders should run before this.
+private fun migrateToEncryptedSharedPreferences(
+    key: String,
+    legacyValueToBytes: (String) -> ByteArray
+) {
+    val legacyValue = defaultSharedPreferences.getString(key, null) ?: return
+    try {
+        encryptedSharedPreferences.putEncryptedBytes(key, legacyValueToBytes(legacyValue))
+    } catch (e: Exception) {
+        e.printStackTrace()
+        return
+    }
+    defaultSharedPreferences.edit { remove(key) }
 }

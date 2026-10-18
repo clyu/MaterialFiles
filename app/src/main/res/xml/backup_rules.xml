@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<full-backup-content>
+    <!-- Encrypted with a key in Android Keystore which can't be backed up anyway. -->
+    <exclude
+        domain="sharedpref"
+        path="encrypted_settings.xml" />
+</full-backup-content>

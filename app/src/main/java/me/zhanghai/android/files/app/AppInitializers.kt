@@ -35,6 +35,7 @@ val appInitializers = listOf(
     ::initializeCoil,
     ::initializeFileSystemProviders,
     ::upgradeApp,
+    ::migrateToEncryptedSettings,
     ::initializeLiveDataObjects,
     ::initializeCustomTheme,
     ::initializeNightMode,
@@ -67,6 +68,11 @@ private fun initializeFileSystemProviders() {
     SftpClient.authenticator = SftpServerAuthenticator
     SmbClient.authenticator = SmbServerAuthenticator
     WebDavClient.authenticator = WebDavServerAuthenticator
+}
+
+private fun migrateToEncryptedSettings() {
+    Settings.STORAGES.migrateFromDefaultSharedPreferences()
+    Settings.FTP_SERVER_PASSWORD.migrateFromDefaultSharedPreferences()
 }
 
 private fun initializeLiveDataObjects() {

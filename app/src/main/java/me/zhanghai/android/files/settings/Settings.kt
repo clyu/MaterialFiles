@@ -26,8 +26,9 @@ import me.zhanghai.android.files.theme.night.NightMode
 import java.io.File
 
 object Settings {
-    val STORAGES: SettingLiveData<List<Storage>> =
-        ParcelValueSettingLiveData(
+    // Contains credentials for network storages.
+    val STORAGES: EncryptedParcelValueSettingLiveData<List<Storage>> =
+        EncryptedParcelValueSettingLiveData(
             R.string.pref_key_storages,
             listOf(FileSystemRoot(null, true), PrimaryStorageVolume(null, true))
         )
@@ -77,8 +78,8 @@ object Settings {
             R.string.pref_key_ftp_server_username, R.string.pref_default_value_ftp_server_username
         )
 
-    val FTP_SERVER_PASSWORD: SettingLiveData<String> =
-        StringSettingLiveData(
+    val FTP_SERVER_PASSWORD: EncryptedStringSettingLiveData =
+        EncryptedStringSettingLiveData(
             R.string.pref_key_ftp_server_password, R.string.pref_default_value_empty
         )
 

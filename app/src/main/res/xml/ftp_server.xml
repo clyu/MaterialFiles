@@ -38,11 +38,13 @@
             android:dependency="@string/pref_key_ftp_server_anonymous_login"
             app:useSimpleSummaryProvider="true" />
 
+        <!-- Persisted with encryption by FtpServerPreferenceFragment. -->
         <me.zhanghai.android.files.settings.PasswordPreference
             android:key="@string/pref_key_ftp_server_password"
             android:title="@string/ftp_server_password_title"
             android:dependency="@string/pref_key_ftp_server_anonymous_login"
             android:inputType="textVisiblePassword"
+            android:persistent="false"
             app:useSimpleSummaryProvider="true" />
 
         <me.zhanghai.android.files.settings.NonNegativeIntegerPreference

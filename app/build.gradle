@@ -97,6 +97,10 @@ android {
 repositories {
     maven {
         url 'https://jitpack.io'
+        // JitPack builds anything on demand, so only use it for the GitHub repositories we need.
+        content {
+            includeGroupByRegex 'com\\.github\\..*'
+        }
     }
 }
 dependencies {

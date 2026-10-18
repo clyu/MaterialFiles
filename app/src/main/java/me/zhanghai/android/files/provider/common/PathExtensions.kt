@@ -317,6 +317,14 @@ fun Path.readSymbolicLinkByteString(): ByteString {
     return target.toByteString()
 }
 
+// A path with a "." or ".." name may point outside of where it appears to be.
+val Path.hasDotOrDotDotName: Boolean
+    get() =
+        (0 until nameCount).any { index ->
+            val name = getName(index).toString()
+            name == "." || name == ".."
+        }
+
 // Can resolve path in a foreign provider.
 fun Path.resolveForeign(other: Path): Path {
     asByteStringListPath()

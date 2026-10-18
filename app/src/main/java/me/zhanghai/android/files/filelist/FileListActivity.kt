@@ -25,6 +25,13 @@ class FileListActivity : AppActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // ACTION_OPEN_DOCUMENT_TREE is only for ourselves until we implement DocumentsProvider, but
+        // other apps can still start us with it explicitly because we are exported.
+        if (intent.action == Intent.ACTION_OPEN_DOCUMENT_TREE && callingPackage != packageName) {
+            finish()
+            return
+        }
+
         // Calls ensureSubDecor().
         findViewById<View>(android.R.id.content)
         if (savedInstanceState == null) {

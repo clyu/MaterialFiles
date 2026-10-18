@@ -42,6 +42,7 @@ import me.zhanghai.android.files.provider.common.InvalidFileNameException
 import me.zhanghai.android.files.provider.common.IsDirectoryException
 import me.zhanghai.android.files.provider.common.force
 import me.zhanghai.android.files.provider.common.getLastModifiedTime
+import me.zhanghai.android.files.provider.common.hasDotOrDotDotName
 import me.zhanghai.android.files.provider.common.isForceable
 import me.zhanghai.android.files.provider.common.newByteChannel
 import me.zhanghai.android.files.provider.common.size
@@ -400,9 +401,19 @@ val Path.fileProviderUri: Uri
 
 private val Uri.fileProviderPath: Path
     get() {
+        // Our Uri path is always a single segment, but a Uri with more segments can still match a
+        // prefix grant, e.g. one with "/.." appended to point outside of the granted path.
+        if (pathSegments.size != 1) {
+            throw SecurityException("Invalid Uri $this")
+        }
         // Strip the prepended slash. A slash is always prepended because our Uri path starts with
         // our URI scheme, which can never start with a slash; but our Uri has an authority so its
         // path must start with a slash.
         val uriPath = Uri.decode(path).substring(1)
-        return Paths.get(URI.create(uriPath))
+        val filePath = Paths.get(URI.create(uriPath))
+        // We never grant access to such a path, so it must have been crafted.
+        if (filePath.hasDotOrDotDotName) {
+            throw SecurityException("Invalid Uri $this")
+        }
+        return filePath
     }

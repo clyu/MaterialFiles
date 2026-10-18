@@ -11,6 +11,7 @@ import at.bitfire.dav4jvm.BasicDigestAuthHandler
 import at.bitfire.dav4jvm.UrlUtils
 import kotlinx.parcelize.Parcelize
 import okhttp3.Authenticator
+import okhttp3.HttpUrl
 import okhttp3.Interceptor
 import okhttp3.Request
 import okhttp3.Response
@@ -44,10 +45,18 @@ data class PasswordAuthentication(
             )
 
             override fun authenticate(route: Route?, response: Response): Request? =
-                basicDigestAuthHandler.authenticate(route, response)
+                if (authority.isOriginOf(response.request.url)) {
+                    basicDigestAuthHandler.authenticate(route, response)
+                } else {
+                    null
+                }
 
             override fun intercept(chain: Interceptor.Chain): Response =
-                basicDigestAuthHandler.intercept(chain)
+                if (authority.isOriginOf(chain.request().url)) {
+                    basicDigestAuthHandler.intercept(chain)
+                } else {
+                    chain.proceed(chain.request())
+                }
         }
 }
 
@@ -61,13 +70,11 @@ data class AccessTokenAuthentication(
 
             override fun intercept(chain: Interceptor.Chain): Response {
                 val request = chain.request()
-                val requestHost = request.url.host
-                val domain = UrlUtils.hostToDomain(authority.host)
-                if (!UrlUtils.hostToDomain(requestHost).equals(domain, true)) {
+                if (!authority.isOriginOf(request.url)) {
                     Log.w(
                         LOG_TAG,
-                        "Not authenticating against $requestHost because it doesn't belong to " +
-                            domain
+                        "Not authenticating against ${request.url.redact()} because it isn't on" +
+                            " the same origin"
                     )
                     return chain.proceed(request)
                 }
@@ -81,4 +88,17 @@ data class AccessTokenAuthentication(
     companion object {
         private val LOG_TAG = AccessTokenAuthentication::class.java.simpleName
     }
+}
+
+// Only send credentials to the server itself, instead of any host in the same domain that a
+// redirect may point to, or over plain HTTP that a redirect may downgrade to.
+private fun Authority.isOriginOf(url: HttpUrl): Boolean {
+    // Built in the same way as WebDavPath.url, so that the host is canonicalized in the same way.
+    val originUrl = HttpUrl.Builder()
+        .scheme(protocol.httpScheme)
+        .host(host)
+        .port(port)
+        .build()
+    return url.scheme == originUrl.scheme && url.host == originUrl.host
+        && url.port == originUrl.port
 }

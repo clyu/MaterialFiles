@@ -1,6 +1,8 @@
 name: Android CI
 
-on: [push]
+on:
+  push:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -10,22 +12,142 @@ jobs:
 
     runs-on: ubuntu-latest
 
+    outputs:
+      apk-name: ${{ steps.rename.outputs.apk-name }}
+      signed: ${{ steps.keystore.outputs.signed }}
+
     steps:
     - name: Check out repository
-      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         submodules: true
         persist-credentials: false
     - name: Set up JDK 21
-      uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+      uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
       with:
         distribution: 'temurin'
         java-version: '21'
-    - name: Build with Gradle
-      run: ./gradlew assembleDebug lintVitalRelease
-    - name: Upload artifact
-      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        # Caches ~/.gradle/caches (including the Gradle build cache) and ~/.gradle/wrapper. Not
+        # using gradle/actions/setup-gradle because its caching is proprietary since v6.
+        cache: 'gradle'
+    - name: Build debug APK
+      run: ./gradlew --build-cache assembleDebug lintVitalRelease
+    - name: Upload debug APK
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: app-debug.apk
         path: app/build/outputs/apk/debug/app-debug.apk
         retention-days: 10
+
+    # A release build is only made when there is a key to sign it with.
+    - name: Decode signing keystore
+      id: keystore
+      env:
+        SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+      run: |
+        if [ -n "$SIGNING_KEYSTORE_BASE64" ]; then
+          echo "$SIGNING_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/signing.jks"
+          echo "STORE_FILE=$RUNNER_TEMP/signing.jks" >> "$GITHUB_ENV"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "::notice::SIGNING_KEYSTORE_BASE64 is not set; not making a release build."
+        fi
+    # For 64-bit ARM devices only, optimized by R8 as configured for release builds.
+    - name: Build release APK
+      if: steps.keystore.outputs.signed == 'true'
+      env:
+        STORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
+        KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+        KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD || secrets.SIGNING_KEYSTORE_PASSWORD }}
+      run: ./gradlew --build-cache assembleRelease -PabiFilters=arm64-v8a
+    - name: Rename release outputs
+      id: rename
+      if: steps.keystore.outputs.signed == 'true'
+      run: |
+        set -euo pipefail
+        metadata=app/build/outputs/apk/release/output-metadata.json
+        version="$(jq -r '.elements[0].versionName // empty' "$metadata")"
+        if [ -z "$version" ]; then
+          echo "::error::versionName not found in $metadata"
+          exit 1
+        fi
+        apk_name="MaterialFiles-$version-arm64-v8a"
+        mv app/build/outputs/apk/release/app-release.apk \
+          "app/build/outputs/apk/release/$apk_name.apk"
+        mv app/build/outputs/mapping/release/mapping.txt \
+          "app/build/outputs/mapping/release/$apk_name-mapping.txt"
+        echo "apk-name=$apk_name" >> "$GITHUB_OUTPUT"
+    - name: Upload release APK
+      if: steps.keystore.outputs.signed == 'true'
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: ${{ steps.rename.outputs.apk-name }}
+        path: app/build/outputs/apk/release/${{ steps.rename.outputs.apk-name }}.apk
+        if-no-files-found: error
+    # Needed to retrace obfuscated stack traces from this build.
+    - name: Upload R8 mapping
+      if: steps.keystore.outputs.signed == 'true'
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: ${{ steps.rename.outputs.apk-name }}-mapping
+        path: app/build/outputs/mapping/release/${{ steps.rename.outputs.apk-name }}-mapping.txt
+        if-no-files-found: error
+
+  # Puts the release APK on the Releases page as the "Latest Build" pre-release, which can be
+  # downloaded without signing in, unlike workflow artifacts.
+  publish-latest:
+    if: github.ref == 'refs/heads/master' && needs.build.outputs.signed == 'true'
+    needs: build
+    runs-on: ubuntu-latest
+
+    # A run checks that no later run has published before publishing its own build, which two
+    # concurrent runs could both get past, so queue them instead.
+    concurrency:
+      group: publish-latest
+      cancel-in-progress: false
+
+    permissions:
+      contents: write
+
+    # There is no checkout for gh to tell the repository from.
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+
+    steps:
+    - name: Download release APK
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      with:
+        name: ${{ needs.build.outputs.apk-name }}
+        path: apk
+    # Every run gets a release under a tag of its own instead of updating a fixed tag, which keeps
+    # working with immutable releases. Runs can finish out of order or be re-run, and the run number
+    # in the tag keeps an older build from replacing a newer one.
+    - name: Publish the Latest Build pre-release
+      env:
+        TAG: ci-${{ github.run_number }}
+      run: |
+        set -euo pipefail
+        later_tags="$(gh release list --limit 100 --json tagName,name,isPrerelease \
+          | jq -r --argjson run "$GITHUB_RUN_NUMBER" \
+            '.[] | select(.name == "Latest Build" and .isPrerelease) | .tagName
+              | select(ltrimstr("ci-") | tonumber > $run)')"
+        if [ -n "$later_tags" ]; then
+          echo "::notice::A later run has already published its build; not publishing this one."
+          exit 0
+        fi
+        gh release create "$TAG" apk/*.apk \
+          --target "$GITHUB_SHA" --prerelease --title "Latest Build" \
+          --notes "Built from $GITHUB_SHA by [run $GITHUB_RUN_NUMBER]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)."
+    # Only once the new release is up, so that there is always one to download. Deleting a release
+    # leaves its tag behind, hence --cleanup-tag.
+    - name: Delete the Latest Build releases of earlier runs
+      run: |
+        set -euo pipefail
+        old_tags="$(gh release list --limit 100 --json tagName,name,isPrerelease \
+          | jq -r --argjson run "$GITHUB_RUN_NUMBER" \
+            '.[] | select(.name == "Latest Build" and .isPrerelease) | .tagName
+              | select(ltrimstr("ci-") | tonumber < $run)')"
+        for old in $old_tags; do
+          gh release delete "$old" --yes --cleanup-tag
+        done

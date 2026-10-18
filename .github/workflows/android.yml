@@ -37,19 +37,11 @@ jobs:
         # Caches ~/.gradle/caches (including the Gradle build cache) and ~/.gradle/wrapper. Not
         # using gradle/actions/setup-gradle because its caching is proprietary since v6.
         cache: 'gradle'
-    - name: Build debug APK
-      run: ./gradlew --build-cache assembleDebug lintVitalRelease
-    - name: Upload debug APK
-      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-      with:
-        name: app-debug.apk
-        path: app/build/outputs/apk/debug/app-debug.apk
-        retention-days: 10
-
     # For 64-bit ARM devices only, optimized by R8 as configured for release builds. There's no
-    # keystore here so the APK is unsigned, and the sign job signs it for master.
+    # keystore here so the APK is unsigned, and the sign job signs it for master. lintVitalRelease
+    # checks the release build for fatal lint issues.
     - name: Build unsigned release APK
-      run: ./gradlew --build-cache assembleRelease -PabiFilters=arm64-v8a
+      run: ./gradlew --build-cache assembleRelease lintVitalRelease -PabiFilters=arm64-v8a
     - name: Rename release outputs
       id: rename
       run: |

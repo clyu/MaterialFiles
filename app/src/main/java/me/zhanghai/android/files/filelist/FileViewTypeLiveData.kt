@@ -16,23 +16,52 @@ import me.zhanghai.android.files.util.valueCompat
 class FileViewTypeLiveData(pathLiveData: LiveData<Path>) : MediatorLiveData<FileViewType>() {
     private lateinit var pathViewTypeLiveData: SettingLiveData<FileViewType?>
 
+    private var pendingValue: FileViewType? = null
+
+    val hasPendingValue: Boolean
+        get() = pendingValue != null
+
+    private val savedValue: FileViewType
+        get() = pathViewTypeLiveData.value ?: Settings.FILE_LIST_VIEW_TYPE.valueCompat
+
     private fun loadValue() {
         if (!this::pathViewTypeLiveData.isInitialized) {
             // Not yet initialized.
             return
         }
-        val value = pathViewTypeLiveData.value ?: Settings.FILE_LIST_VIEW_TYPE.valueCompat
+        val value = pendingValue ?: savedValue
         if (this.value != value) {
             this.value = value
         }
     }
 
-    fun putValue(value: FileViewType) {
-        if (pathViewTypeLiveData.value != null) {
+    fun putPendingValue(value: FileViewType) {
+        pendingValue = value.takeIf { it != savedValue }
+        loadValue()
+    }
+
+    // Shows the saved global value in place of any pending or path specific value.
+    fun putPendingGlobalValue() {
+        putPendingValue(Settings.FILE_LIST_VIEW_TYPE.valueCompat)
+    }
+
+    fun clearPendingValue() {
+        pendingValue = null
+        loadValue()
+    }
+
+    fun applyPendingValue(isPathSpecific: Boolean) {
+        val value = valueCompat
+        if (isPathSpecific) {
             pathViewTypeLiveData.putValue(value)
         } else {
+            // Put the global value before removing the path specific value to avoid flickering.
             Settings.FILE_LIST_VIEW_TYPE.putValue(value)
+            if (pathViewTypeLiveData.value != null) {
+                pathViewTypeLiveData.putValue(null)
+            }
         }
+        clearPendingValue()
     }
 
     init {
@@ -42,6 +71,8 @@ class FileViewTypeLiveData(pathLiveData: LiveData<Path>) : MediatorLiveData<File
                 removeSource(pathViewTypeLiveData)
             }
             pathViewTypeLiveData = PathSettings.getFileListViewType(path)
+            // Discard any change not applied to the previous path.
+            pendingValue = null
             addSource(pathViewTypeLiveData) { loadValue() }
         }
     }

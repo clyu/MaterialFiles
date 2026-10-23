@@ -263,6 +263,7 @@
     <string name="file_list_action_sort_order_ascending">升序</string>
     <string name="file_list_action_sort_directories_first">資料夾優先</string>
     <string name="file_list_action_view_sort_path_specific">僅用於此資料夾</string>
+    <string name="file_list_action_view_sort_apply">套用</string>
     <string name="file_list_action_new_task">新視窗</string>
     <string name="file_list_action_navigate_up">向上</string>
     <string name="file_list_action_navigate_to">移至</string>

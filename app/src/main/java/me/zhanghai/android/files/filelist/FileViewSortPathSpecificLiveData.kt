@@ -10,36 +10,35 @@ import androidx.lifecycle.MediatorLiveData
 import java8.nio.file.Path
 import me.zhanghai.android.files.settings.PathSettings
 import me.zhanghai.android.files.settings.SettingLiveData
-import me.zhanghai.android.files.settings.Settings
-import me.zhanghai.android.files.util.valueCompat
 
 class FileViewSortPathSpecificLiveData(pathLiveData: LiveData<Path>) : MediatorLiveData<Boolean>() {
     private lateinit var pathViewTypeLiveData: SettingLiveData<FileViewType?>
     private lateinit var pathSortOptionsLiveData: SettingLiveData<FileSortOptions?>
 
+    private var pendingValue: Boolean? = null
+
+    val hasPendingValue: Boolean
+        get() = pendingValue != null
+
+    private val savedValue: Boolean
+        get() = pathViewTypeLiveData.value != null || pathSortOptionsLiveData.value != null
+
     private fun loadValue() {
-        val value = pathViewTypeLiveData.value != null || pathSortOptionsLiveData.value != null
+        val value = pendingValue ?: savedValue
         if (this.value != value) {
             this.value = value
         }
     }
 
-    fun putValue(value: Boolean) {
-        if (value) {
-            if (pathViewTypeLiveData.value == null) {
-                pathViewTypeLiveData.putValue(Settings.FILE_LIST_VIEW_TYPE.valueCompat)
-            }
-            if (pathSortOptionsLiveData.value == null) {
-                pathSortOptionsLiveData.putValue(Settings.FILE_LIST_SORT_OPTIONS.valueCompat)
-            }
-        } else {
-            if (pathViewTypeLiveData.value != null) {
-                pathViewTypeLiveData.putValue(null)
-            }
-            if (pathSortOptionsLiveData.value != null) {
-                pathSortOptionsLiveData.putValue(null)
-            }
-        }
+    fun putPendingValue(value: Boolean) {
+        pendingValue = value.takeIf { it != savedValue }
+        loadValue()
+    }
+
+    // The path specific values are put by FileViewTypeLiveData and FileSortOptionsLiveData.
+    fun clearPendingValue() {
+        pendingValue = null
+        loadValue()
     }
 
     init {
@@ -52,6 +51,8 @@ class FileViewSortPathSpecificLiveData(pathLiveData: LiveData<Path>) : MediatorL
             }
             pathViewTypeLiveData = PathSettings.getFileListViewType(path)
             pathSortOptionsLiveData = PathSettings.getFileListSortOptions(path)
+            // Discard any change not applied to the previous path.
+            pendingValue = null
             addSource(pathViewTypeLiveData) { loadValue() }
             addSource(pathSortOptionsLiveData) { loadValue() }
         }

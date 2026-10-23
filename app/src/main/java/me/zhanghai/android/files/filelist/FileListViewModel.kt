@@ -102,10 +102,11 @@ class FileListViewModel : ViewModel() {
 
     private val _viewTypeLiveData = FileViewTypeLiveData(currentPathLiveData)
     val viewTypeLiveData: LiveData<FileViewType> = _viewTypeLiveData
+    // Changes to view type and sort options are only saved by applyViewSortChanges().
     var viewType: FileViewType
         get() = _viewTypeLiveData.valueCompat
         set(value) {
-            _viewTypeLiveData.putValue(value)
+            _viewTypeLiveData.putPendingValue(value)
         }
 
     private val _sortOptionsLiveData = FileSortOptionsLiveData(currentPathLiveData)
@@ -113,12 +114,12 @@ class FileListViewModel : ViewModel() {
     val sortOptions: FileSortOptions
         get() = _sortOptionsLiveData.valueCompat
 
-    fun setSortBy(by: By) = _sortOptionsLiveData.putBy(by)
+    fun setSortBy(by: By) = _sortOptionsLiveData.putPendingBy(by)
 
-    fun setSortOrder(order: Order) = _sortOptionsLiveData.putOrder(order)
+    fun setSortOrder(order: Order) = _sortOptionsLiveData.putPendingOrder(order)
 
     fun setSortDirectoriesFirst(isDirectoriesFirst: Boolean) =
-        _sortOptionsLiveData.putIsDirectoriesFirst(isDirectoriesFirst)
+        _sortOptionsLiveData.putPendingIsDirectoriesFirst(isDirectoriesFirst)
 
     private val _viewSortPathSpecificLiveData =
         FileViewSortPathSpecificLiveData(currentPathLiveData)
@@ -127,8 +128,23 @@ class FileListViewModel : ViewModel() {
     var isViewSortPathSpecific: Boolean
         get() = _viewSortPathSpecificLiveData.valueCompat
         set(value) {
-            _viewSortPathSpecificLiveData.putValue(value)
+            _viewSortPathSpecificLiveData.putPendingValue(value)
+            if (!value) {
+                _viewTypeLiveData.putPendingGlobalValue()
+                _sortOptionsLiveData.putPendingGlobalValue()
+            }
         }
+
+    val hasPendingViewSortChanges: Boolean
+        get() = _viewTypeLiveData.hasPendingValue || _sortOptionsLiveData.hasPendingValue ||
+            _viewSortPathSpecificLiveData.hasPendingValue
+
+    fun applyViewSortChanges() {
+        val isPathSpecific = isViewSortPathSpecific
+        _viewTypeLiveData.applyPendingValue(isPathSpecific)
+        _sortOptionsLiveData.applyPendingValue(isPathSpecific)
+        _viewSortPathSpecificLiveData.clearPendingValue()
+    }
 
     private val _pickOptionsLiveData = MutableLiveData<PickOptions?>()
     val pickOptionsLiveData: LiveData<PickOptions?>

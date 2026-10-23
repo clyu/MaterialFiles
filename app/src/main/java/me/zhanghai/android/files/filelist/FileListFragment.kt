@@ -392,7 +392,57 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
 
         menuBinding = MenuBinding.inflate(menu, inflater)
         menuBinding.viewSortItem.subMenu!!.setGroupDividerEnabledCompat(true)
+        setUpViewSortMenuItems()
         setUpSearchView()
+    }
+
+    private fun setUpViewSortMenuItems() {
+        // Changes are only saved by the apply item, so keep the menu open for the other items.
+        // MenuBuilder.performItemAction() doesn't close the menu for an item with a collapsible
+        // action view, if neither selecting nor expanding the item is handled.
+        val onActionExpandListener = object : MenuItem.OnActionExpandListener {
+            override fun onMenuItemActionExpand(item: MenuItem): Boolean {
+                onViewSortMenuItemSelected(item)
+                return false
+            }
+
+            override fun onMenuItemActionCollapse(item: MenuItem): Boolean = true
+        }
+        for (item in listOf(
+            menuBinding.viewListItem, menuBinding.viewGridItem, menuBinding.sortByNameItem,
+            menuBinding.sortByTypeItem, menuBinding.sortBySizeItem,
+            menuBinding.sortByLastModifiedItem, menuBinding.sortOrderAscendingItem,
+            menuBinding.sortDirectoriesFirstItem, menuBinding.viewSortPathSpecificItem
+        )) {
+            item.setShowAsAction(
+                MenuItem.SHOW_AS_ACTION_NEVER or MenuItem.SHOW_AS_ACTION_COLLAPSE_ACTION_VIEW
+            )
+            item.setActionView(View(requireContext()))
+            item.setOnActionExpandListener(onActionExpandListener)
+        }
+    }
+
+    private fun onViewSortMenuItemSelected(item: MenuItem) {
+        when (item.itemId) {
+            R.id.action_view_list -> viewModel.viewType = FileViewType.LIST
+            R.id.action_view_grid -> viewModel.viewType = FileViewType.GRID
+            R.id.action_sort_by_name -> viewModel.setSortBy(By.NAME)
+            R.id.action_sort_by_type -> viewModel.setSortBy(By.TYPE)
+            R.id.action_sort_by_size -> viewModel.setSortBy(By.SIZE)
+            R.id.action_sort_by_last_modified -> viewModel.setSortBy(By.LAST_MODIFIED)
+            R.id.action_sort_order_ascending ->
+                viewModel.setSortOrder(
+                    if (!menuBinding.sortOrderAscendingItem.isChecked) {
+                        Order.ASCENDING
+                    } else {
+                        Order.DESCENDING
+                    }
+                )
+            R.id.action_sort_directories_first ->
+                viewModel.setSortDirectoriesFirst(!menuBinding.sortDirectoriesFirstItem.isChecked)
+            R.id.action_view_sort_path_specific ->
+                viewModel.isViewSortPathSpecific = !menuBinding.viewSortPathSpecificItem.isChecked
+        }
     }
 
     private fun setUpSearchView() {
@@ -460,46 +510,10 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
                 }
                 true
             }
-            R.id.action_view_list -> {
-                viewModel.viewType = FileViewType.LIST
-                true
-            }
-            R.id.action_view_grid -> {
-                viewModel.viewType = FileViewType.GRID
-                true
-            }
-            R.id.action_sort_by_name -> {
-                viewModel.setSortBy(By.NAME)
-                true
-            }
-            R.id.action_sort_by_type -> {
-                viewModel.setSortBy(By.TYPE)
-                true
-            }
-            R.id.action_sort_by_size -> {
-                viewModel.setSortBy(By.SIZE)
-                true
-            }
-            R.id.action_sort_by_last_modified -> {
-                viewModel.setSortBy(By.LAST_MODIFIED)
-                true
-            }
-            R.id.action_sort_order_ascending -> {
-                viewModel.setSortOrder(
-                    if (!menuBinding.sortOrderAscendingItem.isChecked) {
-                        Order.ASCENDING
-                    } else {
-                        Order.DESCENDING
-                    }
-                )
-                true
-            }
-            R.id.action_sort_directories_first -> {
-                viewModel.setSortDirectoriesFirst(!menuBinding.sortDirectoriesFirstItem.isChecked)
-                true
-            }
-            R.id.action_view_sort_path_specific -> {
-                viewModel.isViewSortPathSpecific = !menuBinding.viewSortPathSpecificItem.isChecked
+            R.id.action_view_sort_apply -> {
+                viewModel.applyViewSortChanges()
+                // Applying doesn't change any displayed value, so live data won't notify us.
+                updateViewSortMenuItems()
                 true
             }
             R.id.action_new_task -> {
@@ -709,6 +723,7 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
         menuBinding.sortOrderAscendingItem.isChecked = sortOptions.order == Order.ASCENDING
         menuBinding.sortDirectoriesFirstItem.isChecked = sortOptions.isDirectoriesFirst
         menuBinding.viewSortPathSpecificItem.isChecked = viewModel.isViewSortPathSpecific
+        menuBinding.viewSortApplyItem.isEnabled = viewModel.hasPendingViewSortChanges
     }
 
     private fun navigateUp() {
@@ -1752,6 +1767,7 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
         val sortOrderAscendingItem: MenuItem,
         val sortDirectoriesFirstItem: MenuItem,
         val viewSortPathSpecificItem: MenuItem,
+        val viewSortApplyItem: MenuItem,
         val selectAllItem: MenuItem,
         val showHiddenFilesItem: MenuItem
     ) {
@@ -1768,6 +1784,7 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
                     menu.findItem(R.id.action_sort_order_ascending),
                     menu.findItem(R.id.action_sort_directories_first),
                     menu.findItem(R.id.action_view_sort_path_specific),
+                    menu.findItem(R.id.action_view_sort_apply),
                     menu.findItem(R.id.action_select_all),
                     menu.findItem(R.id.action_show_hidden_files)
                 )

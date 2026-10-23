@@ -18,35 +18,62 @@ import me.zhanghai.android.files.util.valueCompat
 class FileSortOptionsLiveData(pathLiveData: LiveData<Path>) : MediatorLiveData<FileSortOptions>() {
     private lateinit var pathSortOptionsLiveData: SettingLiveData<FileSortOptions?>
 
+    private var pendingValue: FileSortOptions? = null
+
+    val hasPendingValue: Boolean
+        get() = pendingValue != null
+
+    private val savedValue: FileSortOptions
+        get() = pathSortOptionsLiveData.value ?: Settings.FILE_LIST_SORT_OPTIONS.valueCompat
+
     private fun loadValue() {
         if (!this::pathSortOptionsLiveData.isInitialized) {
             // Not yet initialized.
             return
         }
-        val value = pathSortOptionsLiveData.value ?: Settings.FILE_LIST_SORT_OPTIONS.valueCompat
+        val value = pendingValue ?: savedValue
         if (this.value != value) {
             this.value = value
         }
     }
 
-    fun putBy(by: By) {
-        putValue(valueCompat.copy(by = by))
+    fun putPendingBy(by: By) {
+        putPendingValue(valueCompat.copy(by = by))
     }
 
-    fun putOrder(order: Order) {
-        putValue(valueCompat.copy(order = order))
+    fun putPendingOrder(order: Order) {
+        putPendingValue(valueCompat.copy(order = order))
     }
 
-    fun putIsDirectoriesFirst(isDirectoriesFirst: Boolean) {
-        putValue(valueCompat.copy(isDirectoriesFirst = isDirectoriesFirst))
+    fun putPendingIsDirectoriesFirst(isDirectoriesFirst: Boolean) {
+        putPendingValue(valueCompat.copy(isDirectoriesFirst = isDirectoriesFirst))
     }
 
-    private fun putValue(value: FileSortOptions) {
+    private fun putPendingValue(value: FileSortOptions) {
+        pendingValue = value.takeIf { it != savedValue }
+        loadValue()
+    }
+
+    // Shows the global value that will be used once the path specific value is removed.
+    fun putPendingGlobalValue() {
         if (pathSortOptionsLiveData.value != null) {
+            putPendingValue(Settings.FILE_LIST_SORT_OPTIONS.valueCompat)
+        }
+    }
+
+    fun applyPendingValue(isPathSpecific: Boolean) {
+        val value = valueCompat
+        if (isPathSpecific) {
             pathSortOptionsLiveData.putValue(value)
         } else {
+            // Put the global value before removing the path specific value to avoid flickering.
             Settings.FILE_LIST_SORT_OPTIONS.putValue(value)
+            if (pathSortOptionsLiveData.value != null) {
+                pathSortOptionsLiveData.putValue(null)
+            }
         }
+        pendingValue = null
+        loadValue()
     }
 
     init {
@@ -56,6 +83,8 @@ class FileSortOptionsLiveData(pathLiveData: LiveData<Path>) : MediatorLiveData<F
                 removeSource(pathSortOptionsLiveData)
             }
             pathSortOptionsLiveData = PathSettings.getFileListSortOptions(path)
+            // Discard any change not applied to the previous path.
+            pendingValue = null
             addSource(pathSortOptionsLiveData) { loadValue() }
         }
     }

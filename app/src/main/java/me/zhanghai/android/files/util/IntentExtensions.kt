@@ -5,8 +5,10 @@
 
 package me.zhanghai.android.files.util
 
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Parcelable
 import android.provider.MediaStore
@@ -19,6 +21,7 @@ import me.zhanghai.android.files.compat.DocumentsContractCompat
 import me.zhanghai.android.files.compat.removeFlagsCompat
 import me.zhanghai.android.files.file.MimeType
 import me.zhanghai.android.files.file.intentType
+import me.zhanghai.android.files.viewer.saveas.SaveAsActivity
 import kotlin.reflect.KClass
 
 fun <T : Context> KClass<T>.createIntent(): Intent = Intent(application, java)
@@ -98,6 +101,27 @@ fun Intent.withChooser(title: CharSequence? = null, vararg initialIntents: Inten
     }
 
 fun Intent.withChooser(vararg initialIntents: Intent) = withChooser(null, *initialIntents)
+
+// SaveAsActivity accepts any content URI but won't save ones from our own content providers (see
+// Intent.saveAsPath), so don't let it handle the files we open ourselves.
+fun Intent.withoutSaveAsActivity(): Intent {
+    val saveAsActivity = ComponentName(application, SaveAsActivity::class.java)
+    val activities = packageManager.queryIntentActivities(this, PackageManager.MATCH_DEFAULT_ONLY)
+        .map { ComponentName(it.activityInfo.packageName, it.activityInfo.name) }
+        .filter { it != saveAsActivity }
+    val defaultActivity = packageManager.resolveActivity(this, PackageManager.MATCH_DEFAULT_ONLY)
+        ?.activityInfo?.let { ComponentName(it.packageName, it.name) }
+    return when {
+        // The user has chosen a default activity other than SaveAsActivity.
+        defaultActivity in activities -> this
+        activities.size == 1 -> setComponent(activities.single())
+        // SaveAsActivity is the only activity matched, or has been chosen as the default.
+        defaultActivity == saveAsActivity ->
+            withChooser().putExtra(Intent.EXTRA_EXCLUDE_COMPONENTS, arrayOf(saveAsActivity))
+        // Leave it to the resolver activity which lets the user choose a default.
+        else -> this
+    }
+}
 
 fun Uri.createEditIntent(mimeType: MimeType): Intent =
     Intent(Intent.ACTION_EDIT)

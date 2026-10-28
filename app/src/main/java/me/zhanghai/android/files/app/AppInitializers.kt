@@ -23,6 +23,7 @@ import me.zhanghai.android.files.storage.StorageVolumeListLiveData
 import me.zhanghai.android.files.storage.WebDavServerAuthenticator
 import me.zhanghai.android.files.theme.custom.CustomThemeHelper
 import me.zhanghai.android.files.theme.night.NightModeHelper
+import me.zhanghai.android.files.viewer.audio.audioPlayerNotificationTemplate
 import java.util.Properties
 import me.zhanghai.android.files.provider.ftp.client.Client as FtpClient
 import me.zhanghai.android.files.provider.sftp.client.Client as SftpClient
@@ -95,7 +96,8 @@ private fun createNotificationChannels() {
             listOf(
                 backgroundActivityStartNotificationTemplate.channelTemplate,
                 fileJobNotificationTemplate.channelTemplate,
-                ftpServerServiceNotificationTemplate.channelTemplate
+                ftpServerServiceNotificationTemplate.channelTemplate,
+                audioPlayerNotificationTemplate.channelTemplate
             ).map { it.create(application) }
         )
     }

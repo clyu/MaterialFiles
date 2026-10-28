@@ -10,6 +10,7 @@ import android.content.ClipboardManager
 import android.content.ContentResolver
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
+import android.media.AudioManager
 import android.net.wifi.WifiManager
 import android.os.PowerManager
 import android.os.storage.StorageManager
@@ -25,6 +26,10 @@ val appClassLoader = AppProvider::class.java.classLoader
 
 val appOpsManager: AppOpsManager by lazy {
     application.getSystemServiceCompat(AppOpsManager::class.java)
+}
+
+val audioManager: AudioManager by lazy {
+    application.getSystemServiceCompat(AudioManager::class.java)
 }
 
 val clipboardManager: ClipboardManager by lazy {

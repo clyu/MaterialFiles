@@ -132,6 +132,7 @@ import me.zhanghai.android.files.util.takeIfNotEmpty
 import me.zhanghai.android.files.util.valueCompat
 import me.zhanghai.android.files.util.viewModels
 import me.zhanghai.android.files.util.withChooser
+import me.zhanghai.android.files.util.withoutSaveAsActivity
 import me.zhanghai.android.files.viewer.image.ImageViewerActivity
 
 class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.Listener,
@@ -1338,7 +1339,7 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
                                 .putArgs(OpenFileAsDialogFragment.Args(path))
                         )
                     } else {
-                        it
+                        it.withoutSaveAsActivity()
                     }
                 }
             startActivitySafe(intent)

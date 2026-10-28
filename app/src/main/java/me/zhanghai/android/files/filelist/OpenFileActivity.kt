@@ -21,6 +21,7 @@ import me.zhanghai.android.files.util.createViewIntent
 import me.zhanghai.android.files.util.extraPath
 import me.zhanghai.android.files.util.startActivitySafe
 import me.zhanghai.android.files.util.toBase64
+import me.zhanghai.android.files.util.withoutSaveAsActivity
 import java.security.MessageDigest
 
 class OpenFileActivity : AppActivity() {
@@ -49,6 +50,7 @@ class OpenFileActivity : AppActivity() {
             val intent = path.fileProviderUri.createViewIntent(mimeType)
                 .addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
                 .apply { extraPath = path }
+                .withoutSaveAsActivity()
             startActivitySafe(intent)
         }
     }

@@ -72,6 +72,8 @@
     <string name="notification_channel_file_job_description">Display and control file operations</string>
     <string name="notification_channel_ftp_server_name">FTP server</string>
     <string name="notification_channel_ftp_server_description">Display and control the FTP server</string>
+    <string name="notification_channel_audio_player_name" translatable="false">@string/audio_player_title</string>
+    <string name="notification_channel_audio_player_description">Display and control audio playback</string>
 
     <string name="file_action_archive_password_title">Password required</string>
     <string name="file_action_archive_password_message_format">“%1$s” is password-protected.</string>
@@ -702,6 +704,11 @@
     <string name="navigation_about" translatable="false">@string/about_title</string>
 
     <string name="archive_viewer_title">Archive viewer</string>
+    <string name="audio_player_title">Audio player</string>
+    <string name="audio_player_play">Play</string>
+    <string name="audio_player_pause">Pause</string>
+    <string name="audio_player_loop">Repeat</string>
+    <string name="audio_player_error">Unable to play this file</string>
     <string name="image_viewer_title">Image viewer</string>
     <string name="image_viewer_subtitle_format">%1$,d/%2$,d</string>
     <string name="image_viewer_delete_message_format" translatable="false">@string/file_delete_message_file_format</string>

@@ -97,6 +97,7 @@ import me.zhanghai.android.files.util.putArgs
 import me.zhanghai.android.files.util.showToast
 import me.zhanghai.android.files.util.toEnumSet
 import me.zhanghai.android.files.util.withChooser
+import me.zhanghai.android.files.util.withoutSaveAsActivity
 
 fun FileJob.getString(@StringRes stringRes: Int): String {
     return service.getString(stringRes)
@@ -1505,7 +1506,7 @@ class OpenFileJob(
                                 .putArgs(OpenFileAsDialogFragment.Args(file))
                         )
                     } else {
-                        it
+                        it.withoutSaveAsActivity()
                     }
                 }
         }
